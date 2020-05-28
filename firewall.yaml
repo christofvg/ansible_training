@@ -1,0 +1,54 @@
+---
+- name: playbook name
+  hosts: check_point
+  connection: httpapi
+  tasks:
+    - name: task to have network
+      check_point.mgmt.cp_mgmt_network2:
+        name: "AnsibleNet"
+        subnet: "10.0.0.0"
+        mask_length: 16
+        state: absent
+        auto_publish_session: true
+      register: checkpoint
+
+    - name: Dynamic Object
+      check_point.mgmt.cp_mgmt_dynamic_object:
+        name: LocalGatewayExternal
+        state: present
+        auto_publish_session: true
+      register: checkpoint
+
+    - name: Create Webserver host
+      cp_mgmt_host:
+        ip_address: 10.0.3.4
+        name: Webserver-1
+        state: present
+        auto_publish_session: true
+      register: checkpoint
+
+    - name: Create Webserver port
+      cp_mgmt_service_tcp:
+        port: 8081
+        name: http_8081
+        state: present
+        auto_publish_session: true
+      register: checkpoint
+
+    - name: Create Access rule
+      cp_mgmt_access_rule:
+        action: Accept
+        position: 1
+        destination: LocalGatewayExternal
+        name: Allow_HTTP
+        service: 
+        - http_8081
+        layer: Network
+        state: present
+        auto_publish_session: true
+
+    - name: Install policy
+      cp_mgmt_install_policy:
+        access: true
+        install_on_all_cluster_members_or_fail: yes
+        policy_package: Standard

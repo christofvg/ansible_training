@@ -1,0 +1,113 @@
+---
+# Azure Resources
+- hosts: webservers
+  name: "Create Azure Resources"
+  connection: local
+  tasks:
+    - name: "Create Resource Group"
+      azure_rm_resourcegroup:
+        auth_source: msi
+        name: "{{ resource_group_name }}"
+        location: "westeurope"
+
+    - name: "Create Availability Set"
+      azure_rm_availabilityset:
+        auth_source: msi
+        name: "{{ resource_group_name }}-AS"
+        sku: Aligned
+        resource_group: "{{ resource_group_name }}"
+        location: "westeurope"
+
+    - name: "Create diagnostic Storage Account"
+      azure_rm_storageaccount:
+        auth_source: msi
+        access_tier: Cool
+        account_type: Standard_LRS
+        kind: StorageV2
+        name: "{{ diag_storage_account_name }}"
+        resource_group: "{{ resource_group_name }}"
+        location: "westeurope"
+
+    - name: "Create Network Security Group"
+      azure_rm_securitygroup:
+        auth_source: msi
+        name: "{{ inventory_hostname }}-NSG"
+        rules:
+        - name: "Allow_SSH"
+          priority: 101
+          access: Allow
+          destination_port_range: 22
+          protocol: Tcp
+          direction: Inbound
+        - name: "Allow_HTTP"
+          priority: 102
+          access: Allow
+          destination_port_range: 80
+          protocol: Tcp
+          direction: Inbound
+        resource_group: "{{ resource_group_name }}"
+        location: "westeurope"
+
+    - name: "Create Public IP address"
+      azure_rm_publicipaddress:
+        auth_source: msi
+        name: "{{ inventory_hostname }}-PIP"
+        sku: Standard
+        allocation_method: Static
+        resource_group: "{{ resource_group_name }}"
+        location: "westeurope"
+
+    - name: "Create Network Interface Card"
+      azure_rm_networkinterface:
+        auth_source: msi
+        name: "{{ inventory_hostname }}-NIC"
+        subnet_name: "{{ subnet_name }}"
+        ip_configurations:
+        - name: ipconfig1
+          private_ip_allocation_method: Static
+          private_ip_address: "{{ ip_address }}"
+          public_ip_address_name: "{{ inventory_hostname }}-PIP"
+          primary: yes
+        virtual_network:
+          name: "{{ virtual_network_name }}"
+          resource_group: "{{ virtual_network_resource_group }}"
+        security_group: "{{ inventory_hostname }}-NSG"
+        resource_group: "{{ resource_group_name }}"
+        location: "westeurope"
+
+    - name: "Create Virtual Machines"
+      azure_rm_virtualmachine:
+        auth_source: msi
+        admin_username: "{{ admin_username }}"
+        availability_set: "{{ resource_group_name }}-AS"
+        boot_diagnostics:
+          enabled: yes
+          storage_account: "{{ diag_storage_account_name }}"
+        image:
+          publisher: "Canonical"
+          offer: "0001-com-ubuntu-server-focal"
+          sku: "20_04-lts"
+          version: latest
+        managed_disk_type: "Premium_LRS"
+        name: "{{ inventory_hostname }}"
+        network_interfaces: "{{ inventory_hostname }}-NIC"
+        os_disk_name: "{{ inventory_hostname }}-OS"
+        os_type: "Linux"
+        resource_group: "{{ resource_group_name }}"
+        ssh_password_enabled: no
+        ssh_public_keys:
+          - path: "/home/{{ admin_username }}/.ssh/authorized_keys"
+            key_data: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCxW817gRJ7ZDKCrZ3rZi18So/tECDsYgYNSOL/mAvcclj28IZg+FS5DmyenWB2AF/YkkS9P97LEgmOhFa7qijxnQLMGkkm6tkKReWZPNl71oLmVr9uOCmKjO0n+f9kFArS022LAKLbZr5sz/YmEx6Vz7YqVj9iONgbSr3elBIBJS3irJpNQ2mUJv5VtHNPkaAQw+5ALLNcS8GFEvecFxWeqNldwY8G3CKxdNhrySCH8/5krSn5p3Jr/xiOVD8knJr8dDmTsj4zMG1s63Y3sb3x/6rvjZmtKDWLIMIjy8AJBb7nrEGU4P4AtS6YmDOIA+npGN7gFC8S3hVn4XtENf6H"
+        subnet_name: "{{ subnet_name }}"
+        virtual_network_name: "{{ virtual_network_name }}"
+        vm_size: "Standard_B2s"
+        
+- name: Configure webserver
+  hosts: webservers
+  become: true
+  tasks:
+  - name: Install prerequisites
+    apt: name={{ item }} update_cache=yes state=latest force_apt_get=yes
+    loop: [ 'aptitude' ]
+  - name: Install Apache
+    apt: name=apache2 update_cache=yes state=latest

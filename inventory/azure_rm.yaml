@@ -1,0 +1,7 @@
+plugin: azure_rm
+include_vm_resource_groups:
+- 'RG_ANSIBLE_WEB'
+auth_source: msi
+
+exclude_host_filters:
+- powerstate != 'running'
